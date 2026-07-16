@@ -213,6 +213,40 @@ def get_or_create_telegraph_token():
         print(f"[Telegraph Error] Không thể đăng ký tài khoản Telegra.ph: {e}")
     return None
 
+def parse_inline(text):
+    """Phân tích các định dạng inline Markdown và chuẩn hóa Unicode NFC để sửa lỗi font tiếng Việt"""
+    import unicodedata
+    if not text:
+        return []
+    
+    # Chuẩn hóa Unicode NFC để tránh lỗi tách nguyên âm mang dấu của Telegraph
+    text = unicodedata.normalize('NFC', text)
+    
+    # Regex nhận diện: [link](url), **in đậm**, *in nghiêng*, `inline code`
+    pattern = re.compile(r'(\*\*.*?\*\*|\*.*?\*|`.*?`|\[.*?\]\(.*?\))')
+    parts = pattern.split(text)
+    
+    children = []
+    for part in parts:
+        if not part:
+            continue
+        if part.startswith("**") and part.endswith("**"):
+            children.append({"tag": "strong", "children": [part[2:-2]]})
+        elif part.startswith("*") and part.endswith("*"):
+            children.append({"tag": "em", "children": [part[1:-1]]})
+        elif part.startswith("`") and part.endswith("`"):
+            children.append({"tag": "code", "children": [part[1:-1]]})
+        elif part.startswith("[") and "](" in part and part.endswith(")"):
+            link_match = re.match(r'^\[(.*?)\]\((.*?)\)$', part)
+            if link_match:
+                lbl, url = link_match.groups()
+                children.append({"tag": "a", "attrs": {"href": url}, "children": [lbl]})
+            else:
+                children.append(part)
+        else:
+            children.append(part)
+    return children if children else [text]
+
 def markdown_to_telegraph_nodes(md_text):
     """Chuyển đổi văn bản Markdown cơ bản sang mảng Node của Telegra.ph API"""
     nodes = []
@@ -243,17 +277,17 @@ def markdown_to_telegraph_nodes(md_text):
             
         # 2. Xử lý tiêu đề H1, H2, H3 -> h3, h4 (Telegraph hỗ trợ h3, h4)
         if stripped.startswith("# "):
-            nodes.append({"tag": "h3", "children": [stripped[2:]]})
+            nodes.append({"tag": "h3", "children": parse_inline(stripped[2:])})
         elif stripped.startswith("## "):
-            nodes.append({"tag": "h4", "children": [stripped[3:]]})
+            nodes.append({"tag": "h4", "children": parse_inline(stripped[3:])})
         elif stripped.startswith("### "):
-            nodes.append({"tag": "h4", "children": [stripped[4:]]})
+            nodes.append({"tag": "h4", "children": parse_inline(stripped[4:])})
             
         # 3. Bullet list
         elif stripped.startswith("* ") or stripped.startswith("- "):
-            nodes.append({"tag": "li", "children": [stripped[2:]]})
+            nodes.append({"tag": "li", "children": parse_inline(stripped[2:])})
         elif stripped.startswith("• "):
-            nodes.append({"tag": "li", "children": [stripped[2:]]})
+            nodes.append({"tag": "li", "children": parse_inline(stripped[2:])})
             
         # 4. Dòng trống
         elif not stripped:
@@ -261,7 +295,7 @@ def markdown_to_telegraph_nodes(md_text):
             
         # 5. Đoạn văn thường
         else:
-            nodes.append({"tag": "p", "children": [line]})
+            nodes.append({"tag": "p", "children": parse_inline(line)})
             
     return nodes
 
