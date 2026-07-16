@@ -247,6 +247,71 @@ def parse_inline(text):
             children.append(part)
     return children if children else [text]
 
+def join_wrapped_lines(md_text):
+    """Gộp các dòng bị ngắt dòng cứng (hard wrap) của câu hoặc link để hiển thị liền mạch trên Telegraph"""
+    lines = md_text.split("\n")
+    joined_lines = []
+    
+    for line in lines:
+        if not joined_lines:
+            joined_lines.append(line)
+            continue
+            
+        prev_line = joined_lines[-1]
+        stripped_prev = prev_line.strip()
+        stripped_curr = line.strip()
+        
+        is_prev_special = (
+            stripped_prev.startswith("#") or 
+            stripped_prev.startswith("- ") or 
+            stripped_prev.startswith("* ") or 
+            stripped_prev.startswith("• ") or 
+            stripped_prev.startswith("```") or 
+            stripped_prev.startswith(">") or
+            not stripped_prev
+        )
+        
+        is_curr_special = (
+            stripped_curr.startswith("#") or 
+            stripped_curr.startswith("- ") or 
+            stripped_curr.startswith("* ") or 
+            stripped_curr.startswith("• ") or 
+            stripped_curr.startswith("```") or 
+            stripped_curr.startswith(">") or
+            not stripped_curr
+        )
+        
+        # Đếm các ngoặc tròn và vuông chưa đóng
+        open_bracket = prev_line.count("[") - prev_line.count("]")
+        open_paren = prev_line.count("(") - prev_line.count(")")
+        
+        link_broken = (open_bracket > 0) or (open_paren > 0)
+        
+        should_join = False
+        if link_broken:
+            should_join = True
+        elif not is_prev_special and not is_curr_special:
+            last_char = stripped_prev[-1] if stripped_prev else ""
+            if last_char not in [".", "!", "?", ":", ";", "`", ")"]:
+                should_join = True
+                
+        if should_join:
+            need_space = True
+            if link_broken:
+                last_char = stripped_prev[-1] if stripped_prev else ""
+                first_char = stripped_curr[0] if stripped_curr else ""
+                if last_char in ["[", "(", "/", "-", "@", ":"] or first_char in ["]", ")", "/", "-", ".", "?", "="]:
+                    need_space = False
+            
+            if need_space:
+                joined_lines[-1] = prev_line + " " + line
+            else:
+                joined_lines[-1] = prev_line + line
+        else:
+            joined_lines.append(line)
+            
+    return "\n".join(joined_lines)
+
 def markdown_to_telegraph_nodes(md_text):
     """Chuyển đổi văn bản Markdown cơ bản sang mảng Node của Telegra.ph API"""
     nodes = []
@@ -305,7 +370,7 @@ def publish_to_telegraph(title, md_content):
     if not token:
         return None
         
-    nodes = markdown_to_telegraph_nodes(md_content)
+    nodes = markdown_to_telegraph_nodes(join_wrapped_lines(md_content))
     url = "https://api.telegra.ph/createPage"
     
     payload = {
