@@ -1115,6 +1115,12 @@ def watch_transcript_loop():
                                     ai_response = data.get("content", "")
                                     conversation_last_steps[cid] = idx  # Cập nhật mốc log mới
                                     
+                                    # Lọc bỏ tin nhắn suy nghĩ trung gian lẻ tẻ (Suy nghĩ: hoặc Think-out-loud:)
+                                    stripped_resp = ai_response.strip()
+                                    if re.match(r'^(suy nghĩ|think-out-loud):', stripped_resp, re.IGNORECASE):
+                                        print(f"[Watcher] Bỏ qua tin nhắn suy nghĩ trung gian lẻ tẻ trong `{cid[:8]}` (Step: {idx})")
+                                        continue
+                                    
                                     # Lấy tiêu đề hội thoại
                                     title = active_conversations.get(cid, "Tài liệu Antigravity")
                                     
