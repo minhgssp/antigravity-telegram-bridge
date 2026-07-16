@@ -1,0 +1,6 @@
+.env
+*.log
+topics_map.json
+__pycache__/
+*.pyc
+*.db*
