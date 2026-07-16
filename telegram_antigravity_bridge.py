@@ -247,6 +247,33 @@ def parse_inline(text):
             children.append(part)
     return children if children else [text]
 
+def filter_thinking_content(text):
+    """Cắt bỏ 2 câu đầu tiên sau tiền tố Suy nghĩ / Think-out-loud. Nếu tin nhắn ngắn chỉ có suy nghĩ, trả về chuỗi rỗng để lọc bỏ hoàn toàn"""
+    if not text:
+        return ""
+        
+    import unicodedata
+    text = unicodedata.normalize('NFC', text)
+    
+    # Kiểm tra khớp tiền tố suy nghĩ (có hoặc không có định dạng Markdown như ** hoặc *)
+    match = re.match(r'^([\*_]*?(suy nghĩ|think-out-loud)[\*_]*?:)', text, re.IGNORECASE)
+    if not match:
+        return text
+        
+    prefix = match.group(1)
+    rest = text[len(prefix):].strip()
+    
+    # Tách câu dựa trên kết thúc bằng .!? theo sau bởi khoảng trắng + chữ viết hoa hoặc xuống dòng
+    sentence_ends = list(re.finditer(r'(?<=[.!?])(\s+(?=[A-ZÀ-Ỹ])|\n)', rest))
+    
+    if len(sentence_ends) >= 2:
+        cut_idx = sentence_ends[1].end()
+        remaining = rest[cut_idx:].strip()
+        return remaining
+    else:
+        # Nếu chỉ có 1 hoặc 2 câu suy nghĩ duy nhất, coi như tin nhắn này không chứa nội dung báo cáo thực tế -> bỏ qua
+        return ""
+
 def join_wrapped_lines(md_text):
     """Gộp các dòng bị ngắt dòng cứng (hard wrap) của câu hoặc link để hiển thị liền mạch trên Telegraph"""
     lines = md_text.split("\n")
@@ -1115,11 +1142,12 @@ def watch_transcript_loop():
                                     ai_response = data.get("content", "")
                                     conversation_last_steps[cid] = idx  # Cập nhật mốc log mới
                                     
-                                    # Lọc bỏ tin nhắn suy nghĩ trung gian lẻ tẻ (hỗ trợ cả định dạng Markdown như **Suy nghĩ:** hoặc **Think-out-loud:**)
-                                    stripped_resp = ai_response.strip()
-                                    if re.match(r'^[\*_]*?(suy nghĩ|think-out-loud)[\*_]*?:', stripped_resp, re.IGNORECASE):
-                                        print(f"[Watcher] Bỏ qua tin nhắn suy nghĩ trung gian lẻ tẻ trong `{cid[:8]}` (Step: {idx})")
+                                    # Lọc và cắt bỏ 2 câu suy nghĩ trung gian đầu tiên để tránh over-filtering
+                                    filtered_resp = filter_thinking_content(ai_response)
+                                    if not filtered_resp:
+                                        print(f"[Watcher] Bỏ qua tin nhắn suy nghĩ trung gian ngắn trong `{cid[:8]}` (Step: {idx})")
                                         continue
+                                    ai_response = filtered_resp
                                     
                                     # Lấy tiêu đề hội thoại
                                     title = active_conversations.get(cid, "Tài liệu Antigravity")
